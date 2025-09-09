@@ -251,6 +251,10 @@ export function fieldsToJSONSchema(
   interfaceNameDefinitions: Map<string, JSONSchema4>,
   config?: SanitizedConfig,
   i18n?: I18n,
+  /**
+   * Set of block slugs currently being processed to detect cycles
+   */
+  visitedBlocks?: Set<string>,
 ): {
   properties: {
     [k: string]: JSONSchema4
@@ -258,6 +262,8 @@ export function fieldsToJSONSchema(
   required: string[]
 } {
   const requiredFieldNames = new Set<string>()
+  // Initialize visitedBlocks if not provided (for top-level calls)
+  const currentVisitedBlocks = visitedBlocks || new Set<string>()
 
   return {
     properties: Object.fromEntries(
@@ -286,6 +292,7 @@ export function fieldsToJSONSchema(
                   interfaceNameDefinitions,
                   config,
                   i18n,
+                  currentVisitedBlocks,
                 ),
               },
             }
@@ -315,16 +322,42 @@ export function fieldsToJSONSchema(
                     oneOf: (field.blockReferences ?? field.blocks).map((block) => {
                       if (typeof block === 'string') {
                         const resolvedBlock = config?.blocks?.find((b) => b.slug === block)
+                        const interfaceName = resolvedBlock?.interfaceName ?? resolvedBlock?.slug
+                        
+                        // Check for cycle in block references
+                        if (currentVisitedBlocks.has(block)) {
+                          // Cycle detected - return $ref to prevent infinite recursion
+                          return {
+                            $ref: `#/definitions/${interfaceName}`,
+                          }
+                        }
+
                         return {
-                          $ref: `#/definitions/${resolvedBlock!.interfaceName ?? resolvedBlock!.slug}`,
+                          $ref: `#/definitions/${interfaceName}`,
                         }
                       }
+                      
+                      // For inline blocks, check for cycles by slug
+                      const blockSlug = block.slug
+                      if (currentVisitedBlocks.has(blockSlug)) {
+                        // Cycle detected - create a forward reference
+                        const interfaceName = block.interfaceName ?? blockSlug
+                        return {
+                          $ref: `#/definitions/${interfaceName}`,
+                        }
+                      }
+                      
+                      // Add this block to visited set for cycle detection
+                      const newVisitedBlocks = new Set(currentVisitedBlocks)
+                      newVisitedBlocks.add(blockSlug)
+                      
                       const blockFieldSchemas = fieldsToJSONSchema(
                         collectionIDFieldTypes,
                         block.flattenedFields,
                         interfaceNameDefinitions,
                         config,
                         i18n,
+                        newVisitedBlocks,
                       )
 
                       const blockSchema: JSONSchema4 = {
@@ -384,6 +417,7 @@ export function fieldsToJSONSchema(
                   interfaceNameDefinitions,
                   config,
                   i18n,
+                  currentVisitedBlocks,
                 ),
               }
 
@@ -692,6 +726,7 @@ export function fieldsToJSONSchema(
                 interfaceNameDefinitions,
                 config,
                 i18n,
+                currentVisitedBlocks,
               ),
             }
 
@@ -813,6 +848,7 @@ export function entityToJSONSchema(
       interfaceNameDefinitions,
       config,
       i18n,
+      undefined, // No visitedBlocks for entity schemas
     ),
   }
 
@@ -1197,13 +1233,24 @@ export function configToJSONSchema(
     required: [],
   }
   if (config?.blocks?.length) {
+    // Track visited blocks to detect cycles in top-level block definitions
+    const topLevelVisitedBlocks = new Set<string>()
+    
     for (const block of config.blocks) {
+      // Check for cycles in top-level block definitions
+      if (topLevelVisitedBlocks.has(block.slug)) {
+        continue // Skip if already processed to avoid cycles
+      }
+      
+      topLevelVisitedBlocks.add(block.slug)
+      
       const blockFieldSchemas = fieldsToJSONSchema(
         collectionIDFieldTypes,
         block.flattenedFields,
         interfaceNameDefinitions,
         config,
         i18n,
+        new Set([block.slug]), // Initialize with current block to detect self-references
       )
 
       const blockSchema: JSONSchema4 = {

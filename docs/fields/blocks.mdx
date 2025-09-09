@@ -169,6 +169,104 @@ The `blockType` is saved as the slug of the block that has been selected.
 
 The Admin Panel provides each block with a `blockName` field which optionally allows editors to label their blocks for better editability and readability. This can be visually hidden via `admin.disableBlockName`.
 
+## Recursive and Self-Referencing Blocks
+
+Payload supports recursive and self-referencing blocks, allowing you to create complex nested content structures. This includes:
+
+- **Self-referencing blocks**: A block that can contain instances of itself
+- **Mutually recursive blocks**: Multiple blocks that reference each other in a cycle
+
+### Self-Referencing Block Example
+
+```ts
+import { Block } from 'payload'
+
+const MenuBlock: Block = {
+  slug: 'menu',
+  interfaceName: 'MenuBlock',
+  fields: [
+    {
+      name: 'title',
+      type: 'text',
+      required: true,
+    },
+    {
+      name: 'submenu',
+      type: 'blocks',
+      blockReferences: ['menu'], // Self-reference to create nested menus
+    },
+  ],
+}
+```
+
+### Mutually Recursive Blocks Example
+
+```ts
+import { Block } from 'payload'
+
+const SectionBlock: Block = {
+  slug: 'section',
+  interfaceName: 'SectionBlock', 
+  fields: [
+    {
+      name: 'title',
+      type: 'text',
+    },
+    {
+      name: 'columns',
+      type: 'blocks',
+      blockReferences: ['column'], // References ColumnBlock
+    },
+  ],
+}
+
+const ColumnBlock: Block = {
+  slug: 'column',
+  interfaceName: 'ColumnBlock',
+  fields: [
+    {
+      name: 'width',
+      type: 'number',
+    },
+    {
+      name: 'content',
+      type: 'blocks', 
+      blockReferences: ['section'], // References SectionBlock (creates cycle)
+    },
+  ],
+}
+```
+
+### Generated TypeScript Types
+
+When using recursive blocks, Payload automatically generates recursive TypeScript interfaces:
+
+```ts
+// Generated types for self-referencing block
+interface MenuBlock {
+  blockType: 'menu'
+  title: string
+  submenu?: MenuBlock[] // Recursive reference
+}
+
+// Generated types for mutually recursive blocks
+interface SectionBlock {
+  blockType: 'section'
+  title?: string
+  columns?: ColumnBlock[]
+}
+
+interface ColumnBlock {
+  blockType: 'column'
+  width?: number
+  content?: SectionBlock[] // Mutual reference
+}
+```
+
+<Banner type="success">
+  **Note:** Payload's type generation system automatically detects cycles and prevents infinite recursion, ensuring your TypeScript types compile correctly and your admin interface loads without issues.
+</Banner>
+
 ## Example
 
 `collections/ExampleCollection.js`
