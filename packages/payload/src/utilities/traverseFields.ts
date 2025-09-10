@@ -19,6 +19,7 @@ const traverseArrayOrBlocksField = ({
   parentIsLocalized,
   parentPath,
   parentRef,
+  visitedBlocks,
 }: {
   callback: TraverseFieldsCallback
   callbackStack: (() => ReturnType<TraverseFieldsCallback>)[]
@@ -30,6 +31,7 @@ const traverseArrayOrBlocksField = ({
   parentIsLocalized: boolean
   parentPath: string
   parentRef?: unknown
+  visitedBlocks: Set<string>
 }) => {
   if (fillEmpty) {
     if (field.type === 'array') {
@@ -43,6 +45,7 @@ const traverseArrayOrBlocksField = ({
         parentIsLocalized: parentIsLocalized || field.localized,
         parentPath: `${parentPath}${field.name}.`,
         parentRef,
+        visitedBlocks,
       })
     }
     if (field.type === 'blocks') {
@@ -61,6 +64,7 @@ const traverseArrayOrBlocksField = ({
             parentIsLocalized: parentIsLocalized || field.localized,
             parentPath: `${parentPath}${field.name}.`,
             parentRef,
+            visitedBlocks,
           })
         }
       }
@@ -70,6 +74,12 @@ const traverseArrayOrBlocksField = ({
   for (const ref of data) {
     let fields!: Field[]
     if (field.type === 'blocks' && typeof ref?.blockType === 'string') {
+      // Check for cycles in block traversal to prevent infinite recursion
+      if (visitedBlocks.has(ref.blockType)) {
+        // Cycle detected - skip this block to prevent infinite recursion
+        continue
+      }
+      
       // TODO: iterate over blocks mapped to block slug in v4, or pass through payload.blocks
       const block = field.blockReferences
         ? ((config?.blocks?.find((b) => b.slug === ref.blockType) ??
@@ -84,6 +94,12 @@ const traverseArrayOrBlocksField = ({
     }
 
     if (fields) {
+      // Create new visited set for this branch to track cycles
+      const newVisitedBlocks = new Set(visitedBlocks)
+      if (field.type === 'blocks' && typeof ref?.blockType === 'string') {
+        newVisitedBlocks.add(ref.blockType)
+      }
+      
       traverseFields({
         callback,
         callbackStack,
@@ -96,6 +112,7 @@ const traverseArrayOrBlocksField = ({
         parentPath: `${parentPath}${field.name}.`,
         parentRef,
         ref,
+        visitedBlocks: newVisitedBlocks,
       })
     }
   }
@@ -140,6 +157,10 @@ type TraverseFieldsArgs = {
   parentPath?: string
   parentRef?: Record<string, unknown> | unknown
   ref?: Record<string, unknown> | unknown
+  /**
+   * Set of block slugs currently being traversed to detect cycles and prevent infinite recursion
+   */
+  visitedBlocks?: Set<string>
 }
 
 /**
@@ -163,7 +184,10 @@ export const traverseFields = ({
   parentPath = '',
   parentRef = {},
   ref = {},
+  visitedBlocks,
 }: TraverseFieldsArgs): void => {
+  // Initialize visitedBlocks if not provided (for top-level calls)
+  const currentVisitedBlocks = visitedBlocks || new Set<string>()
   fields.some((field) => {
     let callbackStack: (() => ReturnType<TraverseFieldsCallback>)[] = []
     if (!isTopLevel) {
@@ -427,6 +451,7 @@ export const traverseFields = ({
               parentIsLocalized: true,
               parentPath,
               parentRef: currentParentRef,
+              visitedBlocks: currentVisitedBlocks,
             })
           } else {
             for (const key in currentRef as Record<string, unknown>) {
@@ -446,6 +471,7 @@ export const traverseFields = ({
                 parentIsLocalized: true,
                 parentPath,
                 parentRef: currentParentRef,
+                visitedBlocks: currentVisitedBlocks,
               })
             }
           }
@@ -461,6 +487,7 @@ export const traverseFields = ({
             parentIsLocalized: parentIsLocalized!,
             parentPath,
             parentRef: currentParentRef,
+            visitedBlocks: currentVisitedBlocks,
           })
         }
       } else if (currentRef && typeof currentRef === 'object' && 'fields' in field) {

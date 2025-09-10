@@ -42,14 +42,18 @@ export function genImportMapIterateFields({
         imports,
       })
     } else if (field.type === 'blocks') {
-      genImportMapIterateFields({
-        addToImportMap,
-        baseDir,
-        config,
-        fields: field.blocks.filter((block) => typeof block !== 'string'),
-        importMap,
-        imports,
-      })
+      // Handle blocks field which can have either blocks or blockReferences
+      const blocksToProcess = field.blocks || []
+      if (blocksToProcess.length > 0) {
+        genImportMapIterateFields({
+          addToImportMap,
+          baseDir,
+          config,
+          fields: blocksToProcess.filter((block) => typeof block !== 'string'),
+          importMap,
+          imports,
+        })
+      }
     } else if (field.type === 'tabs') {
       genImportMapIterateFields({
         addToImportMap,

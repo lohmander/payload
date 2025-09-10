@@ -121,6 +121,23 @@ export const baseConfig: Partial<Config> = {
         },
       ],
     },
+    {
+      slug: 'RecursiveMenuBlock',
+      interfaceName: 'RecursiveMenuBlock',
+      fields: [
+        {
+          name: 'title',
+          type: 'text',
+          required: true,
+        },
+        {
+          name: 'submenu',
+          type: 'blocks',
+          blockReferences: ['RecursiveMenuBlock'], // Self-reference using existing blockReferences syntax
+          blocks: [], // Required to be empty for compatibility
+        },
+      ],
+    },
   ],
   custom: {
     client: {
